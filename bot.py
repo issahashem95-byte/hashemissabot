@@ -4,14 +4,12 @@ from flask import Flask
 import telebot
 import yt_dlp
 
-# إعداد سيرفر وهمي لإرضاء Render Web Service وتشغيله مجاناً
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "Bot is running live!"
 
-# ضع التوكين الخاص بك بين القوسين
 TOKEN = 'ضع_التوكين_الخاص_بك_هنا'
 bot = telebot.TeleBot(TOKEN)
 
@@ -30,12 +28,12 @@ def process_video(message):
     status_msg = bot.reply_to(message, "جاري معالجة الرابط وتحميل الفيديو... ⏳")
     output_filename = f"video_{message.chat.id}.mp4"
 
-    # خيارات التنزيل: الحد الأقصى للحجم 50 ميجابايت (حد تيليجرام المجاني)
+    # خيارات التنزيل المحدثة (اختيار صيغة جاهزة وحجم مناسب لتفادي أخطاء FFmpeg)
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
+        'format': 'b[filesize<=50M]/best[ext=mp4]/best',
         'outtmpl': output_filename,
-        'max_filesize': 50 * 1024 * 1024,
         'quiet': True,
+        'no_warnings': True,
     }
 
     try:
@@ -48,11 +46,18 @@ def process_video(message):
             with open(output_filename, 'rb') as video_file:
                 bot.send_video(message.chat.id, video_file, caption="تم التحميل بنجاح ✨")
             os.remove(output_filename)
-        
-        bot.delete_message(chat_id=status_msg.chat.id, message_id=status_msg.message_id)
+            bot.delete_message(chat_id=status_msg.chat.id, message_id=status_msg.message_id)
+        else:
+            bot.edit_message_text("لم يتم العثور على الملف بعد التنزيل.", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
 
     except Exception as e:
-        bot.edit_message_text("حدث خطأ أثناء التحميل، تأكد من صحة الرابط أو أن حجم الفيديو أقل من 50MB.", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
+        # إظهار الخطأ الحقيقي للمستخدم لغرض التشخيص
+        err_msg = str(e)
+        if len(err_msg) > 150:
+            err_msg = err_msg[:150] + "..."
+        
+        bot.edit_message_text(f"❌ حدث خطأ أثناء التحميل:\n`{err_msg}`", chat_id=status_msg.chat.id, message_id=status_msg.message_id, parse_mode="Markdown")
+        
         if os.path.exists(output_filename):
             os.remove(output_filename)
 
@@ -60,9 +65,6 @@ def start_bot():
     bot.infinity_polling()
 
 if __name__ == '__main__':
-    # تشغيل استقبال رسائل البوت في الخلفية
     threading.Thread(target=start_bot, daemon=True).start()
-    
-    # تشغيل خادم الويب للاستضافة
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
